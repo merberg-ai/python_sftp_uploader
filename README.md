@@ -1,5 +1,7 @@
 # SFTP Uploader CLI
 
+# <h1>THIS IS MY PERSONAL PROJECT FOR PERSONAL USE. DO NOT USE IN A PRODUCTION ENVIRONMENT!</h1>
+
 A Python command-line tool to securely upload files via SFTP with progress bars, encryption, persistent configuration, and an optional GUI mode.
 
 ## ✨ Features
