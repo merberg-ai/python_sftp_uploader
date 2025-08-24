@@ -1,4 +1,3 @@
-# sftp_uploader.py
 import os
 import json
 import getpass
@@ -73,13 +72,12 @@ def load_config(key):
     # defaults for new fields
     data.setdefault("recursive", False)
     data.setdefault("skip_existing", True)     # default to skipping
-    data.setdefault("save_password", True)     # default to saving password (as before)
+    data.setdefault("save_password", True)     # default to saving password
     # decrypt if present and saving enabled
     if data.get("save_password") and "password" in data:
         try:
             data["password"] = decrypt_password(data["password"], key)
         except Exception:
-            # corrupted or key rotated; force prompt on next run
             data.pop("password", None)
             warn("Saved password could not be decrypted; will prompt at runtime.")
     else:
@@ -92,7 +90,7 @@ def prompt_config():
     host = input("Host: ")
     port = int(input("Port (default 22): ") or 22)
     username = input("Username: ")
-    # ask whether to save password first, so we know if we prompt now
+    # ask whether to save password first
     sp_in = input("Save password (encrypted) to config? (Y/n): ").strip().lower()
     save_password = (sp_in == "" or sp_in in ("y", "yes", "true", "1"))
     if save_password:
@@ -143,6 +141,7 @@ def collect_files(extensions: List[str], recursive: bool) -> List[Path]:
 
 # ---------- remote helpers ----------
 def sftp_remote_size(sftp: paramiko.SFTPClient, path: str) -> Optional[int]:
+    """Return remote file size in bytes, or None if it doesn't exist."""
     try:
         st = sftp.stat(path)
         return getattr(st, "st_size", None)
@@ -150,6 +149,7 @@ def sftp_remote_size(sftp: paramiko.SFTPClient, path: str) -> Optional[int]:
         return None
 
 def sftp_mkdir_p(sftp: paramiko.SFTPClient, dir_path: str):
+    """Create remote directories as needed (like mkdir -p)."""
     path = PurePosixPath(dir_path)
     parts = path.parts
     if not parts:
@@ -244,7 +244,7 @@ def upload_files(files: List[Path], cfg: dict, password: str):
             if skip_existing and remote_size is not None and remote_size == local_size:
                 total_bar.update(local_size)
                 msg = f"Skipped (exists same size): {rel_path}"
-                tqdm.write(msg)
+                tqdm.write(msg)  # minimal, doesn't break bars
                 logging.info(msg)
                 continue
 
@@ -279,7 +279,7 @@ def main():
     parser.add_argument("--no-recursive", action="store_true", help="Force no subfolders for this run")
     parser.add_argument("--skip-existing", action="store_true", help="Skip existing files (same size) this run")
     parser.add_argument("--no-skip-existing", action="store_true", help="Do not skip existing files this run")
-    # NEW password behavior flags
+    # Password behavior flags
     parser.add_argument("--save-password", action="store_true", help="Persist password (encrypted) in config")
     parser.add_argument("--no-save-password", action="store_true", help="Do not store password; prompt each run")
     parser.add_argument("--ask-password", action="store_true", help="Prompt for password for this run")
@@ -318,20 +318,16 @@ def main():
         cfg["skip_existing"] = True
     if args.no_skip_existing:
         cfg["skip_existing"] = False
-    # Password storage policy overrides
     if args.save_password:
         cfg["save_password"] = True
-        # if we have a decrypted cfg["password"] missing, user may set with --set-password or we’ll prompt once and save now
     if args.no_save_password:
         cfg["save_password"] = False
-        # ensure not persisted on next save
         cfg.pop("password", None)
 
     # Resolve password for this run
     password = resolve_runtime_password(cfg, key, args)
 
-    # If user changed save_password policy, persist config now (without re-prompting)
-    # Note: will save or drop password per policy.
+    # Persist policy changes (and password if saving)
     save_config(cfg, key)
 
     files = collect_files(cfg["extensions"], cfg["recursive"])
